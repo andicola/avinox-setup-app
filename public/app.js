@@ -2895,6 +2895,11 @@ let parsedRoute = null;       // { source, geometries, warnings }
 let selectedGeometries = [];  // indices into parsedRoute.geometries
 let routeStats = null;
 let routeGrades = null;       // grade distribution + climbs
+/* The last analysis, kept for the mode-change waypoints: the energy the card
+   quotes and the modes proposed for the route. Both are reset when a new
+   analysis starts, so the waypoints never describe a previous route. */
+let lastMissionEnergy = null; // { usedWh, flatWh, climbWh, batteryWh, reservePercent }
+let lastRouteModes = null;    // /api/route-modes response
 let elevationChartInstance = null;
 /* What the analysis panel currently describes: the route file name, a ride
    label, or null for a hand-typed route. Shown next to the verdict so the
@@ -3340,6 +3345,70 @@ function exportableTrack() {
     };
 }
 
+/* The points the analysis ran on: the loaded route, or the recording picked
+   in step 1 (the same track analyzeSelectedRide measured). */
+function analysedTrackPoints() {
+    if (routePoints.length > 1) return routePoints;
+    const ride = loadedRides[selectedRideIndex];
+    return ride ? rideTrackPoints(ride) : [];
+}
+
+/* Where to change mode along the analysed track, and the battery to expect
+   there. It needs the climbs, the modes proposed for the route and the number
+   on the energy card: with one of them missing there is no plan, and the
+   export carries the track alone. */
+function modeWaypointPlan() {
+    if (typeof AvinoxWaypoints === 'undefined' || typeof AvinoxRoute === 'undefined') return null;
+    if (!routeGrades || !routeGrades.ok || !lastMissionEnergy || !lastRouteModes || !Array.isArray(lastRouteModes.modes)) return null;
+    const points = analysedTrackPoints();
+    if (points.length < 3) return null;
+    const profile = AvinoxRoute.computeGradeProfile(points);
+    if (!profile.ok) return null;
+    return AvinoxWaypoints.planModeWaypoints({
+        profile: profile.points,
+        climbs: routeGrades.climbs,
+        modes: lastRouteModes.modes,
+        energy: { totalWh: lastMissionEnergy.usedWh, flatWh: lastMissionEnergy.flatWh, climbWh: lastMissionEnergy.climbWh },
+        batteryWh: lastMissionEnergy.batteryWh,
+        reservePercent: lastMissionEnergy.reservePercent
+    });
+}
+
+/* The plan as a list under the proposed modes: what the watch will say, and
+   where, before the file is even downloaded. */
+function renderModeWaypoints() {
+    const box = document.getElementById('modeWaypoints');
+    if (!box) return;
+    const plan = modeWaypointPlan();
+    if (!plan || !plan.ok || !plan.waypoints.length) {
+        box.classList.add('hidden');
+        box.innerHTML = '';
+        return;
+    }
+    const pct = (p) => (Number.isFinite(p) ? '~' + Math.max(0, Math.round(p)) + '%' : '—');
+    const climbText = (c) => 'Climb: ' + c.distanceKm.toFixed(1) + ' km, +' + Math.round(c.gainM) + ' m, avg ' + c.averageGrade.toFixed(1) + '%';
+    const what = (w) => {
+        if (w.kind === 'up') return climbText(w.climb);
+        if (w.kind === 'down') return 'Climb over';
+        if (w.kind === 'reserve') return 'Battery at the reserve';
+        return w.climb ? 'Start · ' + climbText(w.climb) : 'Start';
+    };
+    const rows = plan.waypoints.map((w) => '<tr>'
+        + '<td>' + (w.distanceM / 1000).toFixed(1) + ' km</td>'
+        + '<td><span class="kb-mode-name">' + escapeHtml(w.mode.label) + '</span><div class="kb-subtitle">' + escapeHtml(what(w)) + '</div></td>'
+        + '<td>' + pct(w.batteryPct) + '</td>'
+        + '</tr>').join('');
+    const changes = plan.waypoints.length - 1;
+    box.classList.remove('hidden');
+    box.innerHTML = '<p class="hint"><strong>On the trail:</strong> ' + changes + (changes === 1 ? ' mode change' : ' mode changes')
+        + ' from the start. <strong>Export GPX for Wikiloc</strong> (step 1) writes them as waypoints: at each one the alert names the mode '
+        + 'and the battery to expect there, counting from a full pack. Expected at the finish: ' + pct(plan.finishPct) + '.</p>'
+        + '<div class="kb-table-wrap"><table class="kb-table"><thead><tr>'
+        + '<th>At</th><th>Mode</th><th>Battery</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+        + (plan.notes || []).map((n) => '<p class="hint">· ' + escapeHtml(n) + '</p>').join('');
+}
+
 /* Local download only: the GPX is built in memory and saved by the browser. */
 function exportTrackGpx() {
     const btn = document.getElementById('exportGpxBtn');
@@ -3348,7 +3417,9 @@ function exportTrackGpx() {
         flashButton(btn, 'No GPS track to export');
         return;
     }
-    const text = AvinoxGpxExport.buildGpx(track.segments, { name: track.name, time: track.time });
+    const plan = modeWaypointPlan();
+    const waypoints = plan && plan.ok ? plan.waypoints : [];
+    const text = AvinoxGpxExport.buildGpx(track.segments, { name: track.name, time: track.time, waypoints: waypoints });
     const blob = new Blob([text], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3358,7 +3429,7 @@ function exportTrackGpx() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    flashButton(btn, 'Saved ' + track.fileName);
+    flashButton(btn, 'Saved ' + track.fileName + (waypoints.length ? ' · ' + waypoints.length + ' waypoints' : ''));
 }
 
 /* The load step folds away once a file is in, so the feedback goes on the
@@ -3689,6 +3760,10 @@ function renderElevationChart(chosen) {
 document.getElementById('missionForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    lastMissionEnergy = null;
+    lastRouteModes = null;
+    renderModeWaypoints();
+
     const selectedBattery = selectedBatteryWh();
     const data = {
         bike: document.getElementById('bike').value,
@@ -3768,14 +3843,23 @@ document.getElementById('missionForm').addEventListener('submit', async (e) => {
         }
 
         renderEnergyCard(res, selectedBattery);
+        lastMissionEnergy = {
+            usedWh: energyHeadlineWh(res),
+            flatWh: res.energy.flat,
+            climbWh: res.energy.climb,
+            batteryWh: selectedBattery,
+            reservePercent: res.reserve.percent
+        };
 
         // Phase 3: propose custom modes tailored to this route.
         try {
             const modesResponse = await axios.post('/api/route-modes', data);
+            lastRouteModes = modesResponse.data;
             renderRouteModes(modesResponse.data);
         } catch (e) {
             document.getElementById('routeModes').classList.add('hidden');
         }
+        renderModeWaypoints();
     } catch(err) {
         alert('Mission analysis failed.');
     }
@@ -4058,6 +4142,9 @@ function clearRides() {
 /* Drop the loaded route file: geometry picker, file summary and the track
    it contributed. The analysis panel is refilled by whoever loads next. */
 function clearRouteFile() {
+    lastMissionEnergy = null;
+    lastRouteModes = null;
+    renderModeWaypoints();
     parsedRoute = null;
     selectedGeometries = [];
     routeFileName = null;
@@ -4425,18 +4512,27 @@ function resetRouteSections() {
    with one chip per mode (the pie said the same thing with less clarity). */
 const MODE_KEYS = ['eco', 'auto', 'trail', 'turbo'];
 
+/* A recording carries its own measurement: that is the headline, and the
+   model projection becomes the comparison. A planned route has no
+   measurement, so there the projection IS the number. */
+function measuredRideEnergy() {
+    return (lastFactorSource === 'ride' && selectedRideMetrics
+        && Number.isFinite(selectedRideMetrics.wh)) ? selectedRideMetrics : null;
+}
+
+/* One number drives the headline, the verdict, the cushion and the battery
+   along the track: for a recording the battery energy it actually used,
+   otherwise the estimate. */
+function energyHeadlineWh(res) {
+    const measured = measuredRideEnergy();
+    return measured ? Math.round(measured.packWh) : res.energy.estimated;
+}
+
 function renderEnergyCard(res, selectedBattery) {
     const en = res.energy;
     const set = (id, txt) => { const el = document.getElementById(id); if (el) el.innerText = txt; };
-    /* A recording carries its own measurement: that is the headline, and the
-       model projection becomes the comparison. A planned route has no
-       measurement, so there the projection IS the number. */
-    const measured = (lastFactorSource === 'ride' && selectedRideMetrics
-        && Number.isFinite(selectedRideMetrics.wh)) ? selectedRideMetrics : null;
-
-    /* One number drives the headline, the verdict and the cushion: for a
-       recording the battery energy it actually used, otherwise the estimate. */
-    const used = measured ? Math.round(measured.packWh) : en.estimated;
+    const measured = measuredRideEnergy();
+    const used = energyHeadlineWh(res);
     const feasible = measured ? used <= res.usableWh : res.feasible;
     const verdict = document.getElementById('energyVerdict');
     if (verdict) {

@@ -1,5 +1,6 @@
 /**
- * GPX export — writes the loaded track as a GPX 1.1 file for Wikiloc.
+ * GPX export — writes the loaded track as a GPX 1.1 file for Wikiloc,
+ * with the mode-change waypoints of mode-waypoints.js when there are any.
  *
  * Runs in the browser and builds the file in memory: nothing is sent
  * anywhere, the caller only hands the text to a local download.
@@ -91,7 +92,7 @@
      * lat/lon with 6 decimals; <ele> and <time> only when known (an
      * unknown altitude written as 0 would put the track at sea level).
      *
-     * opts: { name, time? (metadata time), creator? }
+     * opts: { name, time? (metadata time), creator?, waypoints? [{ lat, lon, ele?, name, desc? }] }
      */
     function buildGpx(segments, opts) {
         var o = opts || {};
@@ -107,6 +108,16 @@
         if (name) out.push('    <name>' + name + '</name>');
         if (metaTime) out.push('    <time>' + metaTime + '</time>');
         out.push('  </metadata>');
+        /* Waypoints come before the track in GPX 1.1. Name and description
+           are what Wikiloc shows (and the watch reads out) at the alert. */
+        (o.waypoints || []).forEach(function (w) {
+            if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) return;
+            out.push('  <wpt lat="' + w.lat.toFixed(6) + '" lon="' + w.lon.toFixed(6) + '">');
+            if (Number.isFinite(w.ele)) out.push('    <ele>' + fixed(w.ele, 2) + '</ele>');
+            if (w.name) out.push('    <name>' + escapeXml(w.name) + '</name>');
+            if (w.desc) out.push('    <desc>' + escapeXml(w.desc) + '</desc>');
+            out.push('  </wpt>');
+        });
         out.push('  <trk>');
         if (name) out.push('    <name>' + name + '</name>');
         (segments || []).forEach(function (seg) {

@@ -7,7 +7,7 @@
     "start": "ts-node src/server.ts",
     "build": "tsc --outDir dist",
     "serve": "node dist/server.js",
-    "test": "node --require ts-node/register --test src/energy-model.test.ts src/server.test.ts test/ride-energy.test.js test/avinox-proto-parser.test.js test/route-file.test.js test/surface-osm.test.js test/gpx-export.test.js"
+    "test": "node --require ts-node/register --test src/energy-model.test.ts src/server.test.ts test/ride-energy.test.js test/avinox-proto-parser.test.js test/route-file.test.js test/surface-osm.test.js test/gpx-export.test.js test/mode-waypoints.test.js"
   },
   "dependencies": {
     "express": "^4.19.2"

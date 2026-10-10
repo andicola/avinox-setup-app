@@ -31,6 +31,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
     <script src="/route-file.js"></script>
     <script src="/gpx-export.js"></script>
+    <script src="/mode-waypoints.js"></script>
     <script src="/avinox-proto-parser.js"></script>
     <script src="/ride-energy.js"></script>
     <script src="/surface-osm.js"></script>
@@ -297,7 +298,7 @@
                                     <select id="rideSelector" class="select" aria-label="Select ride"></select>
                                 </div>
                                 <button type="button" id="changeFileBtn" class="btn btn-ghost btn-sm hidden" title="Choose another file">Change file</button>
-                                <button type="button" id="exportGpxBtn" class="btn btn-ghost btn-sm hidden" title="Download this track as a GPX file, ready to upload to Wikiloc. The file is built on this device: nothing is sent.">Export GPX for Wikiloc</button>
+                                <button type="button" id="exportGpxBtn" class="btn btn-ghost btn-sm hidden" title="Download this track as a GPX file for Wikiloc, with a waypoint at every mode change and the battery to expect there. The file is built on this device: nothing is sent.">Export GPX for Wikiloc</button>
                                 <button type="submit" form="missionForm" class="btn btn-primary btn-sm">Analyze</button>
                             </div>
                         </div>
@@ -482,6 +483,7 @@
                                 <p class="hint">Custom modes use a <strong>fixed</strong> assist level, snapped to the app's entry grid (5 Nm / 50 W). Your base ECO/AUTO/TRAIL/TURBO settings stay in the Tuner.</p>
                                 <div class="result-grid" id="routeModesGrid"></div>
                                 <div id="routeModeNotes" class="route-notes"></div>
+                                <div id="modeWaypoints" class="hidden"></div>
                             </div>
                         </div>
 
