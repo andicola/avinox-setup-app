@@ -3291,6 +3291,99 @@ function renderRouteModes(res) {
     });
 }
 
+/* What "Export GPX for Wikiloc" writes: the planned route as loaded (its own
+   segments and times), or the recording being analysed. A recording loses
+   GPS now and then; those stretches become separate <trkseg>, with the same
+   rule the ride map uses to draw them dashed (RIDE_GAP_DT_S / RIDE_GAP_M),
+   so a viewer never draws a straight line over a gap the bike did not ride.
+   Points are cleaned like the stats are, so the file matches the summary. */
+function exportableTrack() {
+    if (typeof AvinoxGpxExport === 'undefined' || typeof AvinoxRoute === 'undefined') return null;
+    if (routePoints.length > 1) {
+        const points = AvinoxRoute.cleanPoints(routePoints).points;
+        const name = (routeFileName || 'Route').replace(/\.(gpx|kml)$/i, '');
+        return {
+            name: name,
+            time: null,
+            segments: AvinoxGpxExport.splitSegments(points),
+            fileName: AvinoxGpxExport.fileNameFor(name)
+        };
+    }
+    const ride = loadedRides[selectedRideIndex];
+    if (!ride) return null;
+    const fixes = ride.samples
+        .filter((s) => AvinoxRoute.isValidCoord(s.latitude, s.longitude))
+        .map((s) => ({
+            lat: s.latitude,
+            lon: s.longitude,
+            ele: Number.isFinite(s.altitude) ? s.altitude : null,
+            time: s.timestamp ? s.timestamp * 1000 : null,
+            segmentId: 0
+        }));
+    /* Gaps first, on the raw fixes: a stop is a run of identical positions
+       one second apart, not a gap, and only becomes one once the duplicates
+       are gone. */
+    const segments = AvinoxGpxExport.splitSegments(fixes, {
+        maxDtS: RIDE_GAP_DT_S,
+        maxDistM: RIDE_GAP_M,
+        distance: AvinoxRoute.haversine
+    })
+        .map((seg, i) => AvinoxRoute.cleanPoints(seg.map((p) => Object.assign({}, p, { segmentId: i }))).points)
+        .filter((seg) => seg.length >= 2);
+    const start = ride.metadata.start ? new Date(ride.metadata.start * 1000) : null;
+    const name = 'Avinox ' + (start ? start.toISOString().slice(0, 10) : 'ride');
+    return {
+        name: name,
+        time: start,
+        segments: segments,
+        fileName: AvinoxGpxExport.fileNameFor(name)
+    };
+}
+
+/* Local download only: the GPX is built in memory and saved by the browser. */
+function exportTrackGpx() {
+    const btn = document.getElementById('exportGpxBtn');
+    const track = exportableTrack();
+    if (!track || !track.segments.length) {
+        flashButton(btn, 'No GPS track to export');
+        return;
+    }
+    const text = AvinoxGpxExport.buildGpx(track.segments, { name: track.name, time: track.time });
+    const blob = new Blob([text], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = track.fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    flashButton(btn, 'Saved ' + track.fileName);
+}
+
+/* The load step folds away once a file is in, so the feedback goes on the
+   button itself, like "Copy" does. */
+function flashButton(btn, text) {
+    if (!btn) return;
+    const original = btn.innerText;
+    btn.innerText = text;
+    btn.disabled = true;
+    setTimeout(() => { btn.innerText = original; btn.disabled = false; }, 1800);
+}
+
+/* Cheap check for the button state: a route, or the selected recording with
+   at least two GPS fixes. */
+function hasExportableTrack() {
+    if (routePoints.length > 1) return true;
+    const ride = loadedRides[selectedRideIndex];
+    if (!ride || typeof AvinoxRoute === 'undefined') return false;
+    let fixes = 0;
+    for (const s of ride.samples) {
+        if (AvinoxRoute.isValidCoord(s.latitude, s.longitude) && ++fixes > 1) return true;
+    }
+    return false;
+}
+
 function renderFileSummary() {
     const box = document.getElementById('fileSummary');
     box.classList.remove('hidden');
@@ -4254,10 +4347,15 @@ function updateRouteLoadState() {
 
     const changeBtn = document.getElementById('changeFileBtn');
     if (changeBtn) changeBtn.classList.toggle('hidden', !(analysisSourceLabel || loadedRides.length));
+    const exportBtn = document.getElementById('exportGpxBtn');
+    if (exportBtn) exportBtn.classList.toggle('hidden', !hasExportableTrack());
     surfaceOsmButtonState();
 }
 
 function initRouteSections() {
+    const exportGpx = document.getElementById('exportGpxBtn');
+    if (exportGpx) exportGpx.addEventListener('click', exportTrackGpx);
+
     Object.keys(ROUTE_SECTIONS).forEach((key) => {
         const toggle = document.getElementById(ROUTE_SECTIONS[key].toggle);
         if (toggle) toggle.addEventListener('click', () => setRouteSection(key, !routeSectionOpen(key)));

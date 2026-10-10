@@ -30,6 +30,7 @@
     <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js" integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
     <script src="/route-file.js"></script>
+    <script src="/gpx-export.js"></script>
     <script src="/avinox-proto-parser.js"></script>
     <script src="/ride-energy.js"></script>
     <script src="/surface-osm.js"></script>
@@ -296,6 +297,7 @@
                                     <select id="rideSelector" class="select" aria-label="Select ride"></select>
                                 </div>
                                 <button type="button" id="changeFileBtn" class="btn btn-ghost btn-sm hidden" title="Choose another file">Change file</button>
+                                <button type="button" id="exportGpxBtn" class="btn btn-ghost btn-sm hidden" title="Download this track as a GPX file, ready to upload to Wikiloc. The file is built on this device: nothing is sent.">Export GPX for Wikiloc</button>
                                 <button type="submit" form="missionForm" class="btn btn-primary btn-sm">Analyze</button>
                             </div>
                         </div>
