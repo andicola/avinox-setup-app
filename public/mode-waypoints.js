@@ -101,7 +101,52 @@
     }
 
     function modeLine(m) {
-        return m.label + ' (level ' + m.assistLevel + ' · ' + m.maxPower + ' W · ' + m.maxTorque + ' Nm)';
+        var level = Number.isFinite(m.assistMin) && Number.isFinite(m.assistMax) && m.assistMin !== m.assistMax
+            ? m.assistMin + '–' + m.assistMax : m.assistLevel;
+        return m.label + ' (level ' + level + ' · ' + m.maxPower + ' W · ' + m.maxTorque + ' Nm)';
+    }
+
+    /**
+     * The Tuner mode (ECO / AUTO / TRAIL / TURBO, as the rider set them in the
+     * app) that stands in for a proposed route mode: the one whose level range
+     * holds the proposed level, with the closest Max Power; the lowest range
+     * wins a tie, since it spends less. With no range holding the level, the
+     * closest range by level, then by power.
+     *
+     * tuner: [{ key, label, assistMin, assistMax, maxPower, maxTorque }]
+     */
+    function tunerModeFor(routeMode, tuner) {
+        var best = null, bestScore = Infinity;
+        (tuner || []).forEach(function (t, i) {
+            if (!Number.isFinite(t.assistMin) || !Number.isFinite(t.assistMax)) return;
+            var level = routeMode.assistLevel;
+            var outside = level < t.assistMin ? t.assistMin - level : (level > t.assistMax ? level - t.assistMax : 0);
+            var score = outside * 1000 + Math.abs((t.maxPower || 0) - (routeMode.maxPower || 0)) + i * 0.001;
+            if (score < bestScore) { bestScore = score; best = t; }
+        });
+        return best;
+    }
+
+    /** The modes the plan names: the route modes themselves, or the Tuner
+     *  modes that stand in for them (two route modes that land on the same
+     *  Tuner mode become one mode, so no alert says "switch" to the mode the
+     *  rider is already in). */
+    function resolveModes(modes, tuner) {
+        if (!tuner || !tuner.length) return modes;
+        var byTuner = {};
+        return modes.map(function (m) {
+            var t = tunerModeFor(m, tuner);
+            if (!t) return m;
+            if (!byTuner[t.key]) {
+                byTuner[t.key] = {
+                    key: m.key, tunerKey: t.key, label: t.label,
+                    assistMin: t.assistMin, assistMax: t.assistMax, assistLevel: t.assistMin,
+                    maxPower: t.maxPower, maxTorque: t.maxTorque, routeModes: []
+                };
+            }
+            byTuner[t.key].routeModes.push(m.key);
+            return byTuner[t.key];
+        });
     }
     function pctText(p) { return Number.isFinite(p) ? '~' + Math.max(0, Math.round(p)) + '%' : '—'; }
     function climbText(c) {
@@ -116,6 +161,8 @@
      *   profile      points of AvinoxRoute.computeGradeProfile(points)
      *   climbs       routeGrades.climbs
      *   modes        the proposed route modes (key, label, assistLevel, maxPower, maxTorque)
+     *   tunerModes   optional: the Tuner's ECO/AUTO/TRAIL/TURBO (key, label, assistMin,
+     *                assistMax, maxPower, maxTorque); given, the alerts name these
      *   energy       { totalWh, flatWh, climbWh }
      *   batteryWh, reservePercent, startPercent (100)
      *   leadM (100), maxWaypoints (25)
@@ -125,9 +172,12 @@
     function planModeWaypoints(opts) {
         var profile = opts.profile || [];
         if (profile.length < 2) return { ok: false, reason: 'no-track', waypoints: [], notes: [] };
-        var modes = opts.modes || [];
+        var routeModes = opts.modes || [];
+        var modes = resolveModes(routeModes, opts.tunerModes);
         var byKey = {};
-        modes.forEach(function (m) { byKey[m.key] = m; });
+        /* keyed by the route mode's role (endurance, climb, tech, reserve):
+           two roles may share one object when they land on one Tuner mode */
+        routeModes.forEach(function (m, i) { byKey[m.key] = modes[i]; });
         var base = byKey.endurance || modes[0];
         if (!base) return { ok: false, reason: 'no-modes', waypoints: [], notes: [] };
         var climbMode = byKey.climb || null, techMode = byKey.tech || null, reserveMode = byKey.reserve || null;
@@ -261,6 +311,8 @@
 
     return {
         planModeWaypoints: planModeWaypoints,
+        tunerModeFor: tunerModeFor,
+        resolveModes: resolveModes,
         batteryAlong: batteryAlong,
         positionAt: positionAt,
         constants: {

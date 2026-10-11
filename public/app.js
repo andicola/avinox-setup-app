@@ -3368,10 +3368,29 @@ function modeWaypointPlan() {
         profile: profile.points,
         climbs: routeGrades.climbs,
         modes: lastRouteModes.modes,
+        tunerModes: waypointNaming === 'tuner' ? tunerModesForWaypoints() : null,
         energy: { totalWh: lastMissionEnergy.usedWh, flatWh: lastMissionEnergy.flatWh, climbWh: lastMissionEnergy.climbWh },
         batteryWh: lastMissionEnergy.batteryWh,
         reservePercent: lastMissionEnergy.reservePercent
     });
+}
+
+/* What the alerts name: the Tuner's ECO/AUTO/TRAIL/TURBO as set in the
+   Avinox app (the modes the rider actually has on the bike), or the custom
+   route modes proposed above, for a rider who sets those up for the route. */
+let waypointNaming = 'tuner';
+
+/* The Tuner's four modes, as the last /api/calculate returned them; null
+   until the Tuner has run, and then the alerts fall back to the route modes. */
+function tunerModesForWaypoints() {
+    const res = lastCalcRes;
+    if (!res) return null;
+    const modes = MODE_KEYS.filter((k) => res[k] && Number.isFinite(res[k].assistMin)).map((k) => ({
+        key: k, label: k.toUpperCase(),
+        assistMin: res[k].assistMin, assistMax: res[k].assistMax,
+        maxPower: res[k].maxPower, maxTorque: res[k].maxTorque
+    }));
+    return modes.length === 4 ? modes : null;
 }
 
 /* The plan as a list under the proposed modes: what the watch will say, and
@@ -3385,6 +3404,15 @@ function renderModeWaypoints() {
         box.innerHTML = '';
         return;
     }
+    const tunerReady = !!tunerModesForWaypoints();
+    const byTuner = waypointNaming === 'tuner' && tunerReady;
+    const naming = '<p class="hint waypoint-naming">Alerts name '
+        + '<label><input type="radio" name="waypointNaming" value="tuner"' + (byTuner ? ' checked' : '') + (tunerReady ? '' : ' disabled') + '> '
+        + 'the Tuner modes (ECO / AUTO / TRAIL / TURBO as set in the Avinox app)</label> '
+        + '<label><input type="radio" name="waypointNaming" value="route"' + (byTuner ? '' : ' checked') + '> '
+        + 'the custom route modes above</label>'
+        + (tunerReady ? '' : ' <span class="hint">· run the Tuner to name ECO / AUTO / TRAIL / TURBO</span>')
+        + '</p>';
     const pct = (p) => (Number.isFinite(p) ? '~' + Math.max(0, Math.round(p)) + '%' : '—');
     const climbText = (c) => 'Climb: ' + c.distanceKm.toFixed(1) + ' km, +' + Math.round(c.gainM) + ' m, avg ' + c.averageGrade.toFixed(1) + '%';
     const what = (w) => {
@@ -3400,7 +3428,7 @@ function renderModeWaypoints() {
         + '</tr>').join('');
     const changes = plan.waypoints.length - 1;
     box.classList.remove('hidden');
-    box.innerHTML = '<p class="hint"><strong>On the trail:</strong> ' + changes + (changes === 1 ? ' mode change' : ' mode changes')
+    box.innerHTML = naming + '<p class="hint"><strong>On the trail:</strong> ' + changes + (changes === 1 ? ' mode change' : ' mode changes')
         + ' from the start. <strong>Export GPX with mode alerts</strong> (step 1) writes them as waypoints: import the file in Wikiloc, Komoot '
         + 'or any navigation app that alerts at waypoints, and at each one your phone or watch names the mode to switch to '
         + 'and the battery to expect there, counting from a full pack. Expected at the finish: ' + pct(plan.finishPct) + '.</p>'
@@ -3408,6 +3436,9 @@ function renderModeWaypoints() {
         + '<th>At</th><th>Mode</th><th>Battery</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
         + (plan.notes || []).map((n) => '<p class="hint">· ' + escapeHtml(n) + '</p>').join('');
+    box.querySelectorAll('input[name="waypointNaming"]').forEach((input) => {
+        input.addEventListener('change', () => { waypointNaming = input.value; renderModeWaypoints(); });
+    });
 }
 
 /* Local download only: the GPX is built in memory and saved by the browser. */

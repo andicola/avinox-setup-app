@@ -1949,3 +1949,7 @@ html[data-theme="dark"] .badge-warn { background: rgba(240, 128, 51, .16); borde
 /* Logo: sul fondo scuro il drop-shadow antracite non serve più */
 html[data-theme="dark"] .brand-logo,
 html[data-theme="dark"] .brand-mark { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .55)); }
+
+/* Mode-change waypoints: which names the alerts carry. */
+.waypoint-naming label { display: inline-flex; align-items: center; gap: .3rem; margin-right: .75rem; color: var(--muted); cursor: pointer; }
+.waypoint-naming input { margin: 0; }

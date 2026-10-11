@@ -185,3 +185,41 @@ test('the waypoints go into the GPX before the track', () => {
     assert.match(gpx, /<wpt lat="45\.0\d{5}" lon="10\.000000">\s*<ele>\d+(\.\d+)?<\/ele>\s*<name>ROUTE CLIMB · 2\.\d km \+1\d\d m · ~\d+%<\/name>\s*<desc>Switch to ROUTE CLIMB/);
     assert.match(gpx, /<name>START · ROUTE ENDURANCE · ~100%<\/name>/);
 });
+
+const TUNER = [
+    { key: 'eco', label: 'ECO', assistMin: 2, assistMax: 2, maxPower: 150, maxTorque: 30 },
+    { key: 'auto', label: 'AUTO', assistMin: 3, assistMax: 7, maxPower: 350, maxTorque: 60 },
+    { key: 'trail', label: 'TRAIL', assistMin: 6, assistMax: 10, maxPower: 500, maxTorque: 85 },
+    { key: 'turbo', label: 'TURBO', assistMin: 8, assistMax: 15, maxPower: 850, maxTorque: 105 }
+];
+
+test('tuner modes: each route mode becomes the Tuner mode whose range holds its level', () => {
+    const { tunerModeFor } = require('../public/mode-waypoints.js');
+    assert.equal(tunerModeFor({ assistLevel: 4, maxPower: 150 }, TUNER).key, 'auto');
+    assert.equal(tunerModeFor({ assistLevel: 9, maxPower: 450 }, TUNER).key, 'trail');
+    assert.equal(tunerModeFor({ assistLevel: 9, maxPower: 800 }, TUNER).key, 'turbo');
+    /* no range holds level 1: the closest one */
+    assert.equal(tunerModeFor({ assistLevel: 1, maxPower: 100 }, TUNER).key, 'eco');
+});
+
+test('tuner modes: the alerts name ECO/AUTO/TRAIL/TURBO, and two roles on one Tuner mode never "switch" to themselves', () => {
+    const { profile, grades } = analysed(ROUTE);
+    const plan = planModeWaypoints({
+        profile: profile.points, climbs: grades.climbs, modes: MODES, tunerModes: TUNER,
+        energy: { totalWh: 200, flatWh: 50, climbWh: 150 }, batteryWh: 800, reservePercent: 15
+    });
+    /* CLIMB (9 · 450 W) is TRAIL, TECH (11 · 500 W) is TURBO: the level decides */
+    assert.deepEqual(plan.waypoints.map((w) => w.mode.label), ['AUTO', 'TRAIL', 'AUTO', 'TURBO', 'AUTO']);
+    assert.match(plan.waypoints[1].desc, /^Switch to TRAIL \(level 6–10 · 500 W · 85 Nm\)/);
+    /* a TECH that lands on TRAIL too (level 10, 500 W) is one mode with CLIMB: no "switch to TRAIL" while in TRAIL */
+    const sameModes = MODES.map((m) => (m.key === 'tech' ? Object.assign({}, m, { assistLevel: 10 }) : m));
+    const merged = planModeWaypoints({
+        profile: profile.points, climbs: grades.climbs, modes: sameModes, tunerModes: TUNER,
+        energy: { totalWh: 200, flatWh: 50, climbWh: 150 }, batteryWh: 800
+    });
+    assert.deepEqual(merged.waypoints.map((w) => w.mode.label), ['AUTO', 'TRAIL', 'AUTO', 'TRAIL', 'AUTO']);
+    assert.deepEqual(merged.waypoints[1].mode.routeModes, ['climb', 'tech']);
+    /* without the Tuner the route modes are named as before */
+    const bare = planModeWaypoints({ profile: profile.points, climbs: grades.climbs, modes: MODES, energy: { totalWh: 200, flatWh: 50, climbWh: 150 }, batteryWh: 800 });
+    assert.deepEqual(bare.waypoints.map((w) => w.mode.label), ['ROUTE ENDURANCE', 'ROUTE CLIMB', 'ROUTE ENDURANCE', 'ROUTE TECH', 'ROUTE ENDURANCE']);
+});
