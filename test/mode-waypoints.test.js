@@ -85,7 +85,7 @@ test('waypoints: start, a climb in and out, a steep climb in TECH, battery falli
     assert.match(up1.name, /^ROUTE CLIMB · 2\.\d km \+1\d\d m · ~\d+%$/);
     assert.match(up1.desc, /Switch to ROUTE CLIMB \(level 9 · 450 W · 85 Nm\): climb of 2\.\d km/);
     assert.match(up1.desc, /starting in 100 m\. Expected battery here: ~\d+%\./);
-    assert.match(start.desc, /Expected battery at the finish: ~50% \(reserve 15%\)/);
+    assert.match(start.desc, /Expected battery at the finish: ~50%, reserve 15%/);
     assert.match(down1.desc, /Back to ROUTE ENDURANCE/);
     /* positions sit on the track */
     plan.waypoints.forEach((w) => { assert.ok(w.lat >= 45 && w.lat <= 45.1); assert.equal(w.lon, 10); assert.ok(Number.isFinite(w.ele)); });
@@ -117,7 +117,7 @@ test('a climb right at the start: the START waypoint is already in the climb mod
     assert.equal(start.mode.key, 'climb');
     assert.equal(start.distanceM, 0);
     assert.match(start.name, /^START · ROUTE CLIMB · ~100%$/);
-    assert.match(start.desc, /^Start in ROUTE CLIMB \(level 9 · 450 W · 85 Nm\): climb of 1\.\d km, \+1\d\d m, avg \d\.\d% \(max \d+%\) right from the start\. Expected battery at the finish: ~75% \(reserve 15%\)\.$/);
+    assert.match(start.desc, /^Start in ROUTE CLIMB \(level 9 · 450 W · 85 Nm\): climb of 1\.\d km, \+1\d\d m, avg \d\.\d% \(max \d+%\) right from the start\. Expected battery at the finish: ~75%, reserve 15%\.$/);
     assert.equal(down.mode.key, 'endurance');
     assert.ok(Math.abs(down.distanceM - grades.climbs[0].endKm * 1000) < 1);
 });
@@ -222,4 +222,25 @@ test('tuner modes: the alerts name ECO/AUTO/TRAIL/TURBO, and two roles on one Tu
     /* without the Tuner the route modes are named as before */
     const bare = planModeWaypoints({ profile: profile.points, climbs: grades.climbs, modes: MODES, energy: { totalWh: 200, flatWh: 50, climbWh: 150 }, batteryWh: 800 });
     assert.deepEqual(bare.waypoints.map((w) => w.mode.label), ['ROUTE ENDURANCE', 'ROUTE CLIMB', 'ROUTE ENDURANCE', 'ROUTE TECH', 'ROUTE ENDURANCE']);
+});
+
+test('the battery carries the estimate margin as a range', () => {
+    const { profile, grades } = analysed(ROUTE);
+    const plan = planModeWaypoints({
+        profile: profile.points, climbs: grades.climbs, modes: MODES,
+        energy: { totalWh: 400, flatWh: 100, climbWh: 300, marginPct: 0.22 }, batteryWh: 800, reservePercent: 15
+    });
+    /* 400 Wh of 800: ~50% at the finish, 39–61% with ±22% */
+    assert.equal(Math.round(plan.finishPct), 50);
+    assert.equal(Math.round(plan.finishLow), 39);
+    assert.equal(Math.round(plan.finishHigh), 61);
+    const down = plan.waypoints.find((w) => w.kind === 'down');
+    assert.match(down.name, /^ROUTE ENDURANCE · ~\d+% \(\d+–\d+%\)$/);
+    assert.match(down.desc, /Expected battery here: ~\d+% \(\d+–\d+%\)\.$/);
+    assert.match(plan.waypoints[0].desc, /Expected battery at the finish: ~50% \(39–61%\), reserve 15%\.$/);
+    assert.ok(plan.notes.some((n) => /±22% margin/.test(n)));
+    /* no margin: plain figures, no brackets */
+    const plain = planModeWaypoints({ profile: profile.points, climbs: grades.climbs, modes: MODES, energy: { totalWh: 400, flatWh: 100, climbWh: 300 }, batteryWh: 800 });
+    assert.match(plain.waypoints.find((w) => w.kind === 'down').name, /^ROUTE ENDURANCE · ~\d+%$/);
+    assert.ok(!plain.notes.some((n) => /margin/.test(n)));
 });

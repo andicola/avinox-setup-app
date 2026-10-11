@@ -2898,7 +2898,7 @@ let routeGrades = null;       // grade distribution + climbs
 /* The last analysis, kept for the mode-change waypoints: the energy the card
    quotes and the modes proposed for the route. Both are reset when a new
    analysis starts, so the waypoints never describe a previous route. */
-let lastMissionEnergy = null; // { usedWh, flatWh, climbWh, batteryWh, reservePercent }
+let lastMissionEnergy = null; // { usedWh, flatWh, climbWh, batteryWh, reservePercent, marginPct }
 let lastRouteModes = null;    // /api/route-modes response
 let elevationChartInstance = null;
 /* What the analysis panel currently describes: the route file name, a ride
@@ -3369,7 +3369,7 @@ function modeWaypointPlan() {
         climbs: routeGrades.climbs,
         modes: lastRouteModes.modes,
         tunerModes: waypointNaming === 'tuner' ? tunerModesForWaypoints() : null,
-        energy: { totalWh: lastMissionEnergy.usedWh, flatWh: lastMissionEnergy.flatWh, climbWh: lastMissionEnergy.climbWh },
+        energy: { totalWh: lastMissionEnergy.usedWh, flatWh: lastMissionEnergy.flatWh, climbWh: lastMissionEnergy.climbWh, marginPct: lastMissionEnergy.marginPct },
         batteryWh: lastMissionEnergy.batteryWh,
         reservePercent: lastMissionEnergy.reservePercent
     });
@@ -3414,6 +3414,7 @@ function renderModeWaypoints() {
         + (tunerReady ? '' : ' <span class="hint">· run the Tuner to name ECO / AUTO / TRAIL / TURBO</span>')
         + '</p>';
     const pct = (p) => (Number.isFinite(p) ? '~' + Math.max(0, Math.round(p)) + '%' : '—');
+    const range = (w) => AvinoxWaypoints.rangeText(w.batteryPct, w.batteryLow, w.batteryHigh);
     const climbText = (c) => 'Climb: ' + c.distanceKm.toFixed(1) + ' km, +' + Math.round(c.gainM) + ' m, avg ' + c.averageGrade.toFixed(1) + '%';
     const what = (w) => {
         if (w.kind === 'up') return climbText(w.climb);
@@ -3424,14 +3425,14 @@ function renderModeWaypoints() {
     const rows = plan.waypoints.map((w) => '<tr>'
         + '<td>' + (w.distanceM / 1000).toFixed(1) + ' km</td>'
         + '<td><span class="kb-mode-name">' + escapeHtml(w.mode.label) + '</span><div class="kb-subtitle">' + escapeHtml(what(w)) + '</div></td>'
-        + '<td>' + pct(w.batteryPct) + '</td>'
+        + '<td>' + escapeHtml(range(w)) + '</td>'
         + '</tr>').join('');
     const changes = plan.waypoints.length - 1;
     box.classList.remove('hidden');
     box.innerHTML = naming + '<p class="hint"><strong>On the trail:</strong> ' + changes + (changes === 1 ? ' mode change' : ' mode changes')
         + ' from the start. <strong>Export GPX with mode alerts</strong> (step 1) writes them as waypoints: import the file in Wikiloc, Komoot '
         + 'or any navigation app that alerts at waypoints, and at each one your phone or watch names the mode to switch to '
-        + 'and the battery to expect there, counting from a full pack. Expected at the finish: ' + pct(plan.finishPct) + '.</p>'
+        + 'and the battery to expect there, counting from a full pack. Expected at the finish: ' + escapeHtml(AvinoxWaypoints.rangeText(plan.finishPct, plan.finishLow, plan.finishHigh)) + '.</p>'
         + '<div class="kb-table-wrap"><table class="kb-table"><thead><tr>'
         + '<th>At</th><th>Mode</th><th>Battery</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
@@ -3880,7 +3881,8 @@ document.getElementById('missionForm').addEventListener('submit', async (e) => {
             flatWh: res.energy.flat,
             climbWh: res.energy.climb,
             batteryWh: selectedBattery,
-            reservePercent: res.reserve.percent
+            reservePercent: res.reserve.percent,
+            marginPct: Number.isFinite(res.energy.marginPercent) ? res.energy.marginPercent / 100 : 0
         };
 
         // Phase 3: propose custom modes tailored to this route.

@@ -52,8 +52,10 @@
      * the whole is scaled so the end of the track lands on the total: surface,
      * steepness and the personal factor are already in that number.
      *
-     * energy: { totalWh, flatWh, climbWh }
-     * Returns { cumWh: [], pct: [], finishPct }
+     * energy: { totalWh, flatWh, climbWh, marginPct? }  marginPct (0.22) is the
+     * estimate's own margin: the battery is also given for a consumption
+     * that much lower (pctHigh) and higher (pctLow).
+     * Returns { cumWh: [], pct: [], pctLow: [], pctHigh: [], finishPct, finishLow, finishHigh }
      */
     function batteryAlong(profile, energy, batteryWh, startPercent) {
         var dist = distances(profile);
@@ -70,14 +72,21 @@
         if (flat + climb <= 0) { flat = 1; climb = 0; }
         if (totalG <= 0) { flat += climb; climb = 0; }
         var scale = total / (flat + climb);
-        var cum = new Array(n), pct = new Array(n), acc = 0;
+        var cum = new Array(n), pct = new Array(n), low = new Array(n), high = new Array(n), acc = 0;
         var start = Number.isFinite(startPercent) ? startPercent : 100;
+        var margin = Number.isFinite(energy.marginPct) ? Math.max(0, energy.marginPct) : 0;
         for (var k = 0; k < n; k++) {
             acc += ((totalD > 0 ? flat * step[k] / totalD : 0) + (totalG > 0 ? climb * gain[k] / totalG : 0)) * scale;
             cum[k] = acc;
             pct[k] = batteryWh > 0 ? start - (100 * acc) / batteryWh : NaN;
+            low[k] = batteryWh > 0 ? start - (100 * acc * (1 + margin)) / batteryWh : NaN;
+            high[k] = batteryWh > 0 ? start - (100 * acc * (1 - margin)) / batteryWh : NaN;
         }
-        return { cumWh: cum, pct: pct, finishPct: n ? pct[n - 1] : NaN, distances: dist };
+        var last = n - 1;
+        return {
+            cumWh: cum, pct: pct, pctLow: low, pctHigh: high, marginPct: margin, distances: dist,
+            finishPct: n ? pct[last] : NaN, finishLow: n ? low[last] : NaN, finishHigh: n ? high[last] : NaN
+        };
     }
 
     /** Index of the last profile point at or before `distanceM`. */
@@ -149,6 +158,13 @@
         });
     }
     function pctText(p) { return Number.isFinite(p) ? '~' + Math.max(0, Math.round(p)) + '%' : '—'; }
+    function pct0(p) { return Math.max(0, Math.round(p)) + '%'; }
+    /* "~47% (40–54%)": the estimate, then its range when there is a margin. */
+    function rangeText(p, lo, hi) {
+        if (!Number.isFinite(p)) return '—';
+        if (!Number.isFinite(lo) || !Number.isFinite(hi) || Math.round(hi) - Math.round(lo) < 1) return pctText(p);
+        return pctText(p) + ' (' + Math.max(0, Math.round(lo)) + '–' + pct0(hi) + ')';
+    }
     function climbText(c) {
         return 'climb of ' + km1(c.distanceKm) + ' km, +' + Math.round(c.gainM) + ' m, avg ' + round1(c.averageGrade) + '%' +
             (Number.isFinite(c.maxGrade) ? ' (max ' + Math.round(c.maxGrade) + '%)' : '');
@@ -204,6 +220,8 @@
             var at = function (distanceM) {
                 var pos = positionAt(profile, dist, distanceM);
                 pos.batteryPct = battery.pct[pos.index];
+                pos.batteryLow = battery.pctLow[pos.index];
+                pos.batteryHigh = battery.pctHigh[pos.index];
                 pos.distanceM = distanceM;
                 return pos;
             };
@@ -228,8 +246,9 @@
                 };
             };
             var start = at(0);
-            var finish = 'Expected battery at the finish: ' + pctText(battery.finishPct) +
-                (reservePct > 0 ? ' (reserve ' + reservePct + '%)' : '') + '.';
+            var here = function (q) { return rangeText(q.batteryPct, q.batteryLow, q.batteryHigh); };
+            var finish = 'Expected battery at the finish: ' + rangeText(battery.finishPct, battery.finishLow, battery.finishHigh) +
+                (reservePct > 0 ? ', reserve ' + reservePct + '%' : '') + '.';
             /* A climb right at the start: one alert, not two at the same spot.
                The start waypoint is in the climb mode and says why. */
             var first = list[0];
@@ -238,7 +257,7 @@
             var startClimb = fromStart ? joined(0) : undefined;
             wps.push({
                 kind: 'start', mode: startMode, climb: startClimb, distanceM: 0,
-                lat: start.lat, lon: start.lon, ele: start.ele, batteryPct: start.batteryPct,
+                lat: start.lat, lon: start.lon, ele: start.ele, batteryPct: start.batteryPct, batteryLow: start.batteryLow, batteryHigh: start.batteryHigh,
                 name: 'START · ' + startMode.label + ' · ' + pctText(start.batteryPct),
                 desc: 'Start in ' + modeLine(startMode) + (fromStart ? ': ' + climbText(startClimb) + ' right from the start' : '') + '. ' + finish
             });
@@ -249,11 +268,11 @@
                 if (x.mode !== current) {
                     var c = joined(i);
                     wps.push({
-                        kind: 'up', mode: x.mode, climb: c, distanceM: x.upAt, lat: p.lat, lon: p.lon, ele: p.ele, batteryPct: p.batteryPct,
-                        name: x.mode.label + ' · ' + km1(c.distanceKm) + ' km +' + Math.round(c.gainM) + ' m · ' + pctText(p.batteryPct),
+                        kind: 'up', mode: x.mode, climb: c, distanceM: x.upAt, lat: p.lat, lon: p.lon, ele: p.ele, batteryPct: p.batteryPct, batteryLow: p.batteryLow, batteryHigh: p.batteryHigh,
+                        name: x.mode.label + ' · ' + km1(c.distanceKm) + ' km +' + Math.round(c.gainM) + ' m · ' + here(p),
                         desc: 'Switch to ' + modeLine(x.mode) + ': ' + climbText(c) +
                             (lead > 0 && x.upAt < c.startKm * 1000 ? ', starting in ' + Math.round(c.startKm * 1000 - x.upAt) + ' m' : '') +
-                            '. Expected battery here: ' + pctText(p.batteryPct) + '.'
+                            '. Expected battery here: ' + here(p) + '.'
                     });
                     current = x.mode;
                 }
@@ -262,9 +281,9 @@
                 if (next && next.climb.startKm * 1000 - x.downAt < MERGE_GAP_M) continue;
                 var q = at(x.downAt);
                 wps.push({
-                    kind: 'down', mode: base, distanceM: x.downAt, lat: q.lat, lon: q.lon, ele: q.ele, batteryPct: q.batteryPct,
-                    name: base.label + ' · ' + pctText(q.batteryPct),
-                    desc: 'Back to ' + modeLine(base) + ': the climb is over. Expected battery here: ' + pctText(q.batteryPct) + '.'
+                    kind: 'down', mode: base, distanceM: x.downAt, lat: q.lat, lon: q.lon, ele: q.ele, batteryPct: q.batteryPct, batteryLow: q.batteryLow, batteryHigh: q.batteryHigh,
+                    name: base.label + ' · ' + here(q),
+                    desc: 'Back to ' + modeLine(base) + ': the climb is over. Expected battery here: ' + here(q) + '.'
                 });
                 current = base;
             }
@@ -279,8 +298,8 @@
                     var dropped = wps.length - before.length;
                     var r = at(rd);
                     before.push({
-                        kind: 'reserve', mode: reserveMode, distanceM: rd, lat: r.lat, lon: r.lon, ele: r.ele, batteryPct: r.batteryPct,
-                        name: reserveMode.label + ' · ' + pctText(r.batteryPct),
+                        kind: 'reserve', mode: reserveMode, distanceM: rd, lat: r.lat, lon: r.lon, ele: r.ele, batteryPct: r.batteryPct, batteryLow: r.batteryLow, batteryHigh: r.batteryHigh,
+                        name: reserveMode.label + ' · ' + here(r),
                         desc: 'The expected battery reaches the ' + reservePct + '% reserve here: switch to ' + modeLine(reserveMode) +
                             ' and stay in it to stretch the final part.'
                     });
@@ -306,7 +325,13 @@
             notes.push(droppedClimbs + ' smaller climb(s) left out to stay within ' + cap + ' waypoints (the Wikiloc limit).');
         }
         wps.forEach(function (w, i) { w.index = i + 1; });
-        return { ok: true, waypoints: wps, notes: notes, finishPct: battery.finishPct, droppedClimbs: droppedClimbs };
+        if (battery.marginPct > 0) {
+            notes.push('Battery figures carry the estimate\'s ±' + Math.round(battery.marginPct * 100) + '% margin: the range in brackets is where to expect it.');
+        }
+        return {
+            ok: true, waypoints: wps, notes: notes, droppedClimbs: droppedClimbs,
+            finishPct: battery.finishPct, finishLow: battery.finishLow, finishHigh: battery.finishHigh, marginPct: battery.marginPct
+        };
     }
 
     return {
@@ -314,6 +339,7 @@
         tunerModeFor: tunerModeFor,
         resolveModes: resolveModes,
         batteryAlong: batteryAlong,
+        rangeText: rangeText,
         positionAt: positionAt,
         constants: {
             WIKILOC_MAX_WAYPOINTS: WIKILOC_MAX_WAYPOINTS,
