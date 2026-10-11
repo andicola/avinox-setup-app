@@ -1,6 +1,7 @@
 /**
- * GPX export — writes the loaded track as a GPX 1.1 file for Wikiloc,
- * with the mode-change waypoints of mode-waypoints.js when there are any.
+ * GPX export — writes the loaded track as a GPX 1.1 file for Wikiloc, Komoot
+ * or any navigation app that alerts at waypoints, with the mode-change
+ * waypoints of mode-waypoints.js when there are any.
  *
  * Runs in the browser and builds the file in memory: nothing is sent
  * anywhere, the caller only hands the text to a local download.
@@ -109,7 +110,7 @@
         if (metaTime) out.push('    <time>' + metaTime + '</time>');
         out.push('  </metadata>');
         /* Waypoints come before the track in GPX 1.1. Name and description
-           are what Wikiloc shows (and the watch reads out) at the alert. */
+           are what the navigation app shows (and the watch reads out) at the alert. */
         (o.waypoints || []).forEach(function (w) {
             if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) return;
             out.push('  <wpt lat="' + w.lat.toFixed(6) + '" lon="' + w.lon.toFixed(6) + '">');

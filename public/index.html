@@ -298,7 +298,7 @@
                                     <select id="rideSelector" class="select" aria-label="Select ride"></select>
                                 </div>
                                 <button type="button" id="changeFileBtn" class="btn btn-ghost btn-sm hidden" title="Choose another file">Change file</button>
-                                <button type="button" id="exportGpxBtn" class="btn btn-ghost btn-sm hidden" title="Download this track as a GPX file for Wikiloc, with a waypoint at every mode change and the battery to expect there. The file is built on this device: nothing is sent.">Export GPX for Wikiloc</button>
+                                <button type="button" id="exportGpxBtn" class="btn btn-ghost btn-sm hidden" title="Download this track as a GPX file with a waypoint at every mode change and the battery to expect there. Import it in Wikiloc, Komoot or any navigation app that alerts at waypoints. The file is built on this device: nothing is sent.">Export GPX with mode alerts</button>
                                 <button type="submit" form="missionForm" class="btn btn-primary btn-sm">Analyze</button>
                             </div>
                         </div>
@@ -327,6 +327,23 @@
                                     </li>
                                     <li>
                                         Load the <code class="code-inline">cloud_ride_rec_*.proto</code> files here. A planned route is simply a <code class="code-inline">.gpx</code> or <code class="code-inline">.kml</code> export from any route planner.
+                                    </li>
+                                </ol>
+                            </details>
+                            <details class="collapsible file-help">
+                                <summary><span class="collapsible-title">What does "Export GPX with mode alerts" do?</span><span class="collapsible-chevron">▸</span></summary>
+                                <ol class="file-help-steps">
+                                    <li>
+                                        The bike cannot change assist mode on its own. After <strong>Analyze</strong>, the calculator knows the climbs of this route and the custom modes it proposes for it, so it can tell you <strong>where to switch</strong>: about 100 m before each climb, and again at the top.
+                                    </li>
+                                    <li>
+                                        <strong>Export GPX with mode alerts</strong> saves the track as a <code class="code-inline">.gpx</code> with a waypoint at every change. Each waypoint names the mode to select, the climb ahead and the battery to expect there. At most 25 waypoints are written (the Wikiloc limit); with more climbs, the smallest ones are left out.
+                                    </li>
+                                    <li>
+                                        Import the file in <strong>Wikiloc</strong>, <strong>Komoot</strong> or any navigation app that alerts at waypoints, and follow the route from your phone or watch: at each waypoint the alert tells you which mode to switch to. Set the proposed custom modes in the Avinox app before you leave.
+                                    </li>
+                                    <li>
+                                        Without an analysis, or when the route has no climbs, the file carries the track alone. Everything is built on your device: nothing is uploaded.
                                     </li>
                                 </ol>
                             </details>

@@ -3296,7 +3296,7 @@ function renderRouteModes(res) {
     });
 }
 
-/* What "Export GPX for Wikiloc" writes: the planned route as loaded (its own
+/* What "Export GPX with mode alerts" writes: the planned route as loaded (its own
    segments and times), or the recording being analysed. A recording loses
    GPS now and then; those stretches become separate <trkseg>, with the same
    rule the ride map uses to draw them dashed (RIDE_GAP_DT_S / RIDE_GAP_M),
@@ -3401,7 +3401,8 @@ function renderModeWaypoints() {
     const changes = plan.waypoints.length - 1;
     box.classList.remove('hidden');
     box.innerHTML = '<p class="hint"><strong>On the trail:</strong> ' + changes + (changes === 1 ? ' mode change' : ' mode changes')
-        + ' from the start. <strong>Export GPX for Wikiloc</strong> (step 1) writes them as waypoints: at each one the alert names the mode '
+        + ' from the start. <strong>Export GPX with mode alerts</strong> (step 1) writes them as waypoints: import the file in Wikiloc, Komoot '
+        + 'or any navigation app that alerts at waypoints, and at each one your phone or watch names the mode to switch to '
         + 'and the battery to expect there, counting from a full pack. Expected at the finish: ' + pct(plan.finishPct) + '.</p>'
         + '<div class="kb-table-wrap"><table class="kb-table"><thead><tr>'
         + '<th>At</th><th>Mode</th><th>Battery</th>'

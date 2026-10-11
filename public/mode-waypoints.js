@@ -1,8 +1,8 @@
 /**
  * Mode-change waypoints — where to switch assist mode along a route, and the
- * battery to expect there. They ride along in the GPX for Wikiloc: the watch
- * (or the phone) alerts at each waypoint, so the rider changes mode without
- * watching the profile.
+ * battery to expect there. They ride along in the exported GPX: Wikiloc,
+ * Komoot or any navigation app that alerts at waypoints tells the rider, on
+ * the watch or the phone, when to change mode without watching the profile.
  *
  * Everything comes from what the Route tab already computed; nothing new is
  * modelled here:
@@ -22,7 +22,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
-    var WIKILOC_MAX_WAYPOINTS = 25;  // Wikiloc imports at most 25 waypoints per trail
+    var WIKILOC_MAX_WAYPOINTS = 25;  // Wikiloc imports at most 25 waypoints per trail (the strictest of the apps)
     var DEFAULT_LEAD_M = 100;        // the alert fires before the climb starts, not on it
     var MERGE_GAP_M = 300;           // two climbs with less than this between them are ridden as one
     var TECH_MIN_AVG_GRADE = 12;     // a climb this steep on average takes the TECH mode
