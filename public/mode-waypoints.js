@@ -157,6 +157,26 @@
                 pos.distanceM = distanceM;
                 return pos;
             };
+            /* The stretch an alert announces: climbs ridden as one (less than
+               MERGE_GAP_M apart, same mode) are described together, from the
+               first start to the last top, so the rider hears the whole effort. */
+            var joined = function (i) {
+                var j = i;
+                while (list[j + 1] && list[j + 1].mode === list[i].mode &&
+                    list[j + 1].climb.startKm * 1000 - list[j].downAt < MERGE_GAP_M) j++;
+                if (j === i) return list[i].climb;
+                var a = list[i].climb, z = list[j].climb, gain = 0, max = -Infinity;
+                for (var k = i; k <= j; k++) {
+                    gain += list[k].climb.gainM || 0;
+                    if (Number.isFinite(list[k].climb.maxGrade)) max = Math.max(max, list[k].climb.maxGrade);
+                }
+                var km = z.endKm - a.startKm;
+                return {
+                    startKm: a.startKm, endKm: z.endKm, distanceKm: km, gainM: gain,
+                    averageGrade: km > 0 ? gain / (km * 1000) * 100 : a.averageGrade,
+                    maxGrade: Number.isFinite(max) ? max : undefined, joined: j - i + 1
+                };
+            };
             var start = at(0);
             var finish = 'Expected battery at the finish: ' + pctText(battery.finishPct) +
                 (reservePct > 0 ? ' (reserve ' + reservePct + '%)' : '') + '.';
@@ -165,17 +185,19 @@
             var first = list[0];
             var fromStart = first && first.upAt < lead;
             var startMode = fromStart ? first.mode : base;
+            var startClimb = fromStart ? joined(0) : undefined;
             wps.push({
-                kind: 'start', mode: startMode, climb: fromStart ? first.climb : undefined, distanceM: 0,
+                kind: 'start', mode: startMode, climb: startClimb, distanceM: 0,
                 lat: start.lat, lon: start.lon, ele: start.ele, batteryPct: start.batteryPct,
                 name: 'START · ' + startMode.label + ' · ' + pctText(start.batteryPct),
-                desc: 'Start in ' + modeLine(startMode) + (fromStart ? ': ' + climbText(first.climb) + ' right from the start' : '') + '. ' + finish
+                desc: 'Start in ' + modeLine(startMode) + (fromStart ? ': ' + climbText(startClimb) + ' right from the start' : '') + '. ' + finish
             });
             var current = startMode;
             for (var i = 0; i < list.length; i++) {
-                var x = list[i], c = x.climb;
+                var x = list[i];
                 var p = at(x.upAt);
                 if (x.mode !== current) {
+                    var c = joined(i);
                     wps.push({
                         kind: 'up', mode: x.mode, climb: c, distanceM: x.upAt, lat: p.lat, lon: p.lon, ele: p.ele, batteryPct: p.batteryPct,
                         name: x.mode.label + ' · ' + km1(c.distanceKm) + ' km +' + Math.round(c.gainM) + ' m · ' + pctText(p.batteryPct),

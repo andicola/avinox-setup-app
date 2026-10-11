@@ -98,6 +98,14 @@ test('two climbs close together are ridden as one', () => {
     assert.equal(grades.climbs.length, 2);
     const plan = planModeWaypoints({ profile: profile.points, climbs: grades.climbs, modes: MODES, energy: { totalWh: 200, flatWh: 50, climbWh: 50 }, batteryWh: 800, reservePercent: 15 });
     assert.deepEqual(plan.waypoints.map((w) => w.kind), ['start', 'up', 'down']);
+    /* the alert announces the whole stretch, not just the first piece */
+    const [, up, down] = plan.waypoints;
+    const [a, b] = grades.climbs;
+    assert.equal(up.climb.joined, 2);
+    assert.ok(Math.abs(up.climb.gainM - (a.gainM + b.gainM)) < 1e-9);
+    assert.ok(Math.abs(up.climb.distanceKm - (b.endKm - a.startKm)) < 1e-9);
+    assert.match(up.name, /^ROUTE CLIMB · 2\.\d km \+1[5-6]\d m · ~\d+%$/);
+    assert.ok(Math.abs(down.distanceM - b.endKm * 1000) < 1);
 });
 
 test('a climb right at the start: the START waypoint is already in the climb mode', () => {
